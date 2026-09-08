@@ -1,0 +1,35 @@
+@OrderTracker.Api_HostAddress = http://localhost:5080
+
+POST {{OrderTracker.Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "externalReference": "PO-1042",
+  "customer": {
+    "name": "Northwind Traders",
+    "email": "buyer@northwind.test"
+  },
+  "currency": "USD",
+  "notes": "Need by Friday",
+  "lineItems": [
+    { "sku": "WDG-1", "name": "Widget", "quantity": 2, "unitPrice": 15.5 },
+    { "sku": "BLT-9", "name": "Bolt pack", "quantity": 4, "unitPrice": 2.25 }
+  ]
+}
+
+###
+
+GET {{OrderTracker.Api_HostAddress}}/api/orders
+
+###
+
+GET {{OrderTracker.Api_HostAddress}}/api/orders/00000000-0000-0000-0000-000000000000
+
+###
+
+POST {{OrderTracker.Api_HostAddress}}/api/orders/00000000-0000-0000-0000-000000000000/status
+Content-Type: application/json
+
+{
+  "status": "Confirmed"
+}
