@@ -1,0 +1,84 @@
+<div class="page-head">
+  <h1>New order</h1>
+  <a routerLink="/orders">Back to list</a>
+</div>
+
+@if (error) {
+  <div class="banner err">{{ error }}</div>
+}
+
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <fieldset>
+    <legend>Order</legend>
+    <div class="grid">
+      <label>
+        Client reference
+        <input formControlName="externalReference" maxlength="80" autocomplete="off" />
+      </label>
+      <label>
+        Currency
+        <select formControlName="currency">
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="GBP">GBP</option>
+        </select>
+      </label>
+    </div>
+    <label>
+      Notes
+      <textarea formControlName="notes" rows="2"></textarea>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Customer</legend>
+    <div class="grid">
+      <label>
+        Name
+        <input formControlName="customerName" />
+      </label>
+      <label>
+        Email
+        <input formControlName="customerEmail" type="email" />
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset formArrayName="lineItems">
+    <legend>Line items</legend>
+    <p class="muted">Totals are calculated by the server when you submit.</p>
+    <table class="lines">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Name</th>
+          <th>Qty</th>
+          <th>Unit price</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (line of lines.controls; track $index; let i = $index) {
+          <tr [formGroupName]="i">
+            <td><input formControlName="sku" /></td>
+            <td><input formControlName="name" /></td>
+            <td><input formControlName="quantity" type="number" min="1" step="1" /></td>
+            <td><input formControlName="unitPrice" type="number" min="0" step="0.01" /></td>
+            <td>
+              <button type="button" class="btn ghost" (click)="removeLine(i)" [disabled]="lines.length === 1">
+                Remove
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost" (click)="addLine()">Add line</button>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit" class="btn" [disabled]="saving">
+      {{ saving ? 'Submitting…' : 'Submit order' }}
+    </button>
+  </div>
+</form>

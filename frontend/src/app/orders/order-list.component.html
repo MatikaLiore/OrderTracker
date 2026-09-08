@@ -1,0 +1,55 @@
+<div class="page-head">
+  <h1>Orders</h1>
+  <a routerLink="/orders/new" class="btn">New order</a>
+</div>
+
+<p class="hint">Newest first. Repeat submits with the same client reference reuse the original order.</p>
+
+<div class="toolbar">
+  <label>
+    Status
+    <select [(ngModel)]="statusFilter">
+      <option value="">All</option>
+      @for (s of statuses; track s) {
+        <option [value]="s">{{ s }}</option>
+      }
+    </select>
+  </label>
+  <button type="button" class="btn ghost" (click)="reload()">Refresh</button>
+</div>
+
+@if (error) {
+  <div class="banner err">{{ error }}</div>
+}
+
+@if (loading) {
+  <p>Loading…</p>
+} @else if (visible.length === 0) {
+  <p class="empty">No orders{{ statusFilter ? ' with that status' : ' yet' }}.</p>
+} @else {
+  <table>
+    <thead>
+      <tr>
+        <th>Reference</th>
+        <th>Customer</th>
+        <th>Status</th>
+        <th>Total</th>
+        <th>Submitted</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (order of visible; track order.id) {
+        <tr [routerLink]="['/orders', order.id]" class="row">
+          <td>{{ order.externalReference }}</td>
+          <td>
+            {{ order.customer.name }}
+            <div class="muted">{{ order.customer.email }}</div>
+          </td>
+          <td><span class="badge" [ngClass]="statusClass(order.status)">{{ order.status }}</span></td>
+          <td>{{ order.total | number:'1.2-2' }} {{ order.currency }}</td>
+          <td>{{ order.createdAt | date:'yyyy-MM-dd HH:mm' }}</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+}

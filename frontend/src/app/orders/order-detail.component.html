@@ -1,0 +1,97 @@
+<div class="page-head">
+  <h1>Order</h1>
+  <a routerLink="/orders">Back to list</a>
+</div>
+
+@if (notice) {
+  <div class="banner ok">{{ notice }}</div>
+}
+@if (error) {
+  <div class="banner err">{{ error }}</div>
+}
+
+@if (loading) {
+  <p>Loading…</p>
+} @else if (order) {
+  <div class="meta">
+    <div>
+      <div class="label">Reference</div>
+      <div>{{ order.externalReference }}</div>
+    </div>
+    <div>
+      <div class="label">Status</div>
+      <div><span class="badge" [ngClass]="statusClass(order.status)">{{ order.status }}</span></div>
+    </div>
+    <div>
+      <div class="label">Submitted</div>
+      <div>{{ order.createdAt | date:'yyyy-MM-dd HH:mm' }}</div>
+    </div>
+    <div>
+      <div class="label">Updated</div>
+      <div>{{ order.updatedAt | date:'yyyy-MM-dd HH:mm' }}</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Customer</h2>
+    <p>{{ order.customer.name }} — {{ order.customer.email }}</p>
+  </section>
+
+  @if (order.notes) {
+    <section>
+      <h2>Notes</h2>
+      <p>{{ order.notes }}</p>
+    </section>
+  }
+
+  <section>
+    <h2>Lines</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Name</th>
+          <th>Qty</th>
+          <th>Unit price</th>
+          <th>Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (line of order.lineItems; track $index) {
+          <tr>
+            <td>{{ line.sku }}</td>
+            <td>{{ line.name }}</td>
+            <td>{{ line.quantity }}</td>
+            <td>{{ line.unitPrice | number:'1.2-2' }} {{ order.currency }}</td>
+            <td>{{ line.lineTotal | number:'1.2-2' }} {{ order.currency }}</td>
+          </tr>
+        }
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">Subtotal</td>
+          <td>{{ order.subtotal | number:'1.2-2' }} {{ order.currency }}</td>
+        </tr>
+        <tr>
+          <td colspan="4">Total</td>
+          <td>{{ order.total | number:'1.2-2' }} {{ order.currency }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </section>
+
+  <section>
+    <h2>Change status</h2>
+    @if (moves().length === 0) {
+      <p class="muted">This order is {{ order.status.toLowerCase() }} — no further changes from here.</p>
+    } @else {
+      <div class="actions">
+        @for (status of moves(); track status) {
+          <button type="button" class="btn" [disabled]="updating" (click)="setStatus(status)">
+            Mark {{ status.toLowerCase() }}
+          </button>
+        }
+      </div>
+    }
+  </section>
+}
