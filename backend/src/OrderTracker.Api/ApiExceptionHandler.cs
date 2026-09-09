@@ -2,8 +2,9 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using OrderTracker.Api.Services;
 
-namespace OrderTracker.Api.Infrastructure;
+namespace OrderTracker.Api;
 
+/// <summary>Turns known business errors into ProblemDetails HTTP responses.</summary>
 public sealed class ApiExceptionHandler : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
@@ -18,19 +19,14 @@ public sealed class ApiExceptionHandler : IExceptionHandler
                 "Request is invalid",
                 ex.Message,
                 (IReadOnlyList<string>?)ex.Errors),
-            DuplicateOrderException ex => (
-                StatusCodes.Status409Conflict,
-                "Duplicate order reference",
-                ex.Message,
-                null),
-            InvalidStatusTransitionException ex => (
+            BadStatusChangeException ex => (
                 StatusCodes.Status409Conflict,
                 "Status change not allowed",
                 ex.Message,
                 null),
             OrderNotFoundException ex => (
                 StatusCodes.Status404NotFound,
-                "Order not found",
+                "Food order not found",
                 ex.Message,
                 null),
             _ => (

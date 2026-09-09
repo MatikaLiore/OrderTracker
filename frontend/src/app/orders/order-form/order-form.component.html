@@ -1,0 +1,75 @@
+<div class="page-head">
+  <h1>New food order</h1>
+  <a routerLink="/orders">Back to kitchen board</a>
+</div>
+
+@if (error) {
+  <div class="banner err">{{ error }}</div>
+}
+
+@if (menuLoading) {
+  <p>Loading menu…</p>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="submit()">
+    <fieldset>
+      <legend>Order</legend>
+      <p class="muted">Order number is generated automatically (e.g. ORD-0001).</p>
+      <label>
+        Client reference <span class="muted">(optional)</span>
+        <input
+          formControlName="clientReference"
+          maxlength="80"
+          autocomplete="off"
+          placeholder="e.g. Multichoice Year End Function"
+        />
+      </label>
+      <label>
+        Kitchen notes <span class="muted">(optional)</span>
+        <textarea formControlName="notes" rows="2" placeholder="Allergies, no onions, table number…"></textarea>
+      </label>
+    </fieldset>
+
+    <fieldset formArrayName="lineItems">
+      <legend>Menu items</legend>
+      <p class="muted">Select dishes from the menu. Prices are fixed; totals are calculated by the server.</p>
+      <table class="lines">
+        <thead>
+          <tr>
+            <th>Dish</th>
+            <th>Qty</th>
+            <th>Unit price</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of lines.controls; track $index; let i = $index) {
+            <tr [formGroupName]="i">
+              <td>
+                <select formControlName="menuItemId">
+                  <option value="" disabled>Please select a dish</option>
+                  @for (item of menu; track item.id) {
+                    <option [value]="item.id">{{ dishLabel(item) }}</option>
+                  }
+                </select>
+              </td>
+              <td><input formControlName="quantity" type="number" min="1" step="1" /></td>
+              <td class="price">{{ formatMoney(priceFor(line.value.menuItemId)) }}</td>
+              <td>
+                <button type="button" class="btn ghost" (click)="removeLine(i)" [disabled]="lines.length === 1">
+                  Remove
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <button type="button" class="btn ghost" (click)="addLine()">Add dish</button>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="btn" [disabled]="saving || menu.length === 0">
+        {{ saving ? 'Sending to kitchen…' : 'Place order' }}
+      </button>
+    </div>
+  </form>
+}

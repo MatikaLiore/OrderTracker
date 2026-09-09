@@ -1,6 +1,6 @@
 <div class="page-head">
-  <h1>Order</h1>
-  <a routerLink="/orders">Back to list</a>
+  <h1>Food order</h1>
+  <a routerLink="/orders">Back to kitchen board</a>
 </div>
 
 @if (notice) {
@@ -15,15 +15,15 @@
 } @else if (order) {
   <div class="meta">
     <div>
-      <div class="label">Reference</div>
-      <div>{{ order.externalReference }}</div>
+      <div class="label">Order #</div>
+      <div>{{ order.orderNumber }}</div>
     </div>
     <div>
       <div class="label">Status</div>
       <div><span class="badge" [ngClass]="statusClass(order.status)">{{ order.status }}</span></div>
     </div>
     <div>
-      <div class="label">Submitted</div>
+      <div class="label">Placed</div>
       <div>{{ order.createdAt | date:'yyyy-MM-dd HH:mm' }}</div>
     </div>
     <div>
@@ -32,25 +32,24 @@
     </div>
   </div>
 
-  <section>
-    <h2>Customer</h2>
-    <p>{{ order.customer.name }} — {{ order.customer.email }}</p>
-  </section>
+  @if (order.clientReference) {
+    <p class="muted">Client reference: {{ order.clientReference }}</p>
+  }
 
   @if (order.notes) {
     <section>
-      <h2>Notes</h2>
+      <h2>Kitchen notes</h2>
       <p>{{ order.notes }}</p>
     </section>
   }
 
   <section>
-    <h2>Lines</h2>
+    <h2>Menu items</h2>
     <table>
       <thead>
         <tr>
-          <th>SKU</th>
-          <th>Name</th>
+          <th>Code</th>
+          <th>Dish</th>
           <th>Qty</th>
           <th>Unit price</th>
           <th>Line total</th>
@@ -59,29 +58,29 @@
       <tbody>
         @for (line of order.lineItems; track $index) {
           <tr>
-            <td>{{ line.sku }}</td>
+            <td>{{ line.menuCode }}</td>
             <td>{{ line.name }}</td>
             <td>{{ line.quantity }}</td>
-            <td>{{ line.unitPrice | number:'1.2-2' }} {{ order.currency }}</td>
-            <td>{{ line.lineTotal | number:'1.2-2' }} {{ order.currency }}</td>
+            <td>{{ formatMoney(line.unitPrice) }}</td>
+            <td>{{ formatMoney(line.lineTotal) }}</td>
           </tr>
         }
       </tbody>
       <tfoot>
         <tr>
           <td colspan="4">Subtotal</td>
-          <td>{{ order.subtotal | number:'1.2-2' }} {{ order.currency }}</td>
+          <td>{{ formatMoney(order.subtotal) }}</td>
         </tr>
         <tr>
           <td colspan="4">Total</td>
-          <td>{{ order.total | number:'1.2-2' }} {{ order.currency }}</td>
+          <td>{{ formatMoney(order.total) }}</td>
         </tr>
       </tfoot>
     </table>
   </section>
 
   <section>
-    <h2>Change status</h2>
+    <h2>Update kitchen status</h2>
     @if (moves().length === 0) {
       <p class="muted">This order is {{ order.status.toLowerCase() }} — no further changes from here.</p>
     } @else {

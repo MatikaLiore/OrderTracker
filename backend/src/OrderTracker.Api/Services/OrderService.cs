@@ -1,101 +1,165 @@
-using System.Net.Mail;
-using System.Text.RegularExpressions;
-using OrderTracker.Api.Contracts;
-using OrderTracker.Api.Domain;
+using OrderTracker.Api.Data;
+using OrderTracker.Api.Dtos;
+using OrderTracker.Api.Models;
 
 namespace OrderTracker.Api.Services;
 
+/// <summary>
+/// Business rules for food orders: validate, place, list, change status.
+/// Prices and totals are always calculated here on the server.
+/// </summary>
 public sealed class OrderService
 {
-    private static readonly Regex CurrencyCode = new("^[A-Za-z]{3}$", RegexOptions.Compiled);
+    private readonly OrderStore _store;
+    private readonly TimeProvider _clock;
 
-    private readonly IOrderStore _store;
-    private readonly TimeProvider _time;
-
-    public OrderService(IOrderStore store) : this(store, TimeProvider.System)
-    {
-    }
-
-    public OrderService(IOrderStore store, TimeProvider time)
+    public OrderService(OrderStore store, TimeProvider? clock = null)
     {
         _store = store;
-        _time = time;
+        _clock = clock ?? TimeProvider.System;
     }
 
-    public SubmitOrderResult Submit(CreateOrderRequest request)
+    public SubmitResult PlaceOrder(CreateOrderRequest request)
     {
         var errors = Validate(request);
+        var menuIds = request.LineItems
+            .Where(l => l.MenuItemId != Guid.Empty)
+            .Select(l => l.MenuItemId)
+            .Distinct()
+            .ToList();
+        var menuById = _store.GetMenuItems(menuIds);
+
+        foreach (var id in menuIds)
+        {
+            if (!menuById.ContainsKey(id))
+                errors.Add("One or more menu items are not on the menu.");
+        }
+
         if (errors.Count > 0)
             throw new OrderValidationException(errors);
 
-        var reference = request.ExternalReference.Trim();
+        var clientRef = string.IsNullOrWhiteSpace(request.ClientReference)
+            ? null
+            : request.ClientReference.Trim();
 
-        if (_store.TryGetByReference(reference, out var existing) && existing is not null)
-            return ReplayOrReject(existing, request);
-
-        var order = Build(request, reference, _time.GetUtcNow());
-        if (!_store.TryAdd(order))
+        if (clientRef is not null)
         {
-            // Lost a race with another submit of the same reference.
-            if (!_store.TryGetByReference(reference, out var winner) || winner is null)
-                throw new InvalidOperationException("Order was not stored.");
+            var existing = _store.FindByClientReference(clientRef);
+            if (existing is not null)
+            {
+                if (SameDetails(existing, request, menuById))
+                    return new SubmitResult { Order = existing, Created = false };
 
-            return ReplayOrReject(winner, request);
+                return new SubmitResult
+                {
+                    ConflictMessage =
+                        $"A food order with client reference '{clientRef}' already exists, but the submitted details are different. " +
+                        "If this is the same order, send the original details again. Otherwise use a new client reference (or leave it blank)."
+                };
+            }
         }
 
-        return new SubmitOrderResult(order, Created: true);
+        var order = BuildOrder(request, _store.NextOrderNumber(), menuById, _clock.GetUtcNow());
+        _store.Add(order);
+        return new SubmitResult { Order = order, Created = true };
     }
 
-    public IReadOnlyList<Order> List() => _store.ListNewestFirst();
+    public IReadOnlyList<Order> ListOrders() => _store.GetAllNewestFirst();
 
-    public Order Get(Guid id)
-    {
-        if (!_store.TryGetById(id, out var order) || order is null)
-            throw new OrderNotFoundException(id);
-
-        return order;
-    }
+    public Order GetOrder(Guid id) =>
+        _store.FindById(id) ?? throw new OrderNotFoundException(id);
 
     public Order ChangeStatus(Guid id, OrderStatus next)
     {
-        var order = Get(id);
+        var order = GetOrder(id);
 
-        lock (order)
+        if (!OrderStatusRules.CanChange(order.Status, next))
+            throw new BadStatusChangeException(order.Status, next);
+
+        order.Status = next;
+        order.UpdatedAt = _clock.GetUtcNow();
+        _store.Save();
+        return order;
+    }
+
+    public IReadOnlyList<MenuItemDto> ListMenu() =>
+        _store.GetMenu()
+            .Select(m => new MenuItemDto
+            {
+                Id = m.Id,
+                Code = m.Code,
+                Name = m.Name,
+                UnitPrice = m.UnitPrice
+            })
+            .ToList();
+
+    private static List<string> Validate(CreateOrderRequest request)
+    {
+        // Shape checks (length, quantity, required lines) also live as DataAnnotations on the DTOs.
+        // Keep these here so OrderService stays safe when called from unit tests without the HTTP pipeline.
+        var errors = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(request.ClientReference) && request.ClientReference.Trim().Length > 80)
+            errors.Add("Client reference is too long (80 characters max).");
+
+        if (!string.IsNullOrWhiteSpace(request.Notes) && request.Notes.Trim().Length > 1000)
+            errors.Add("Notes are too long (1000 characters max).");
+
+        if (request.LineItems is null || request.LineItems.Count == 0)
         {
-            if (!OrderStatusRules.CanTransition(order.Status, next))
-                throw new InvalidStatusTransitionException(order.Status, next);
-
-            order.Status = next;
-            order.UpdatedAt = _time.GetUtcNow();
-            return order;
+            errors.Add("At least one menu item is required.");
+            return errors;
         }
+
+        if (request.LineItems.Count > 50)
+            errors.Add("An order can have at most 50 menu items.");
+
+        for (var i = 0; i < request.LineItems.Count; i++)
+        {
+            var line = request.LineItems[i];
+            var n = i + 1;
+
+            if (line.MenuItemId == Guid.Empty)
+                errors.Add($"Item {n}: please select a dish from the menu.");
+            if (line.Quantity < 1)
+                errors.Add($"Item {n}: quantity must be a positive whole number.");
+        }
+
+        return errors;
     }
 
-    private static SubmitOrderResult ReplayOrReject(Order existing, CreateOrderRequest request)
+    private static Order BuildOrder(
+        CreateOrderRequest request,
+        string orderNumber,
+        IReadOnlyDictionary<Guid, MenuItem> menuById,
+        DateTimeOffset now)
     {
-        if (SamePayload(existing, request))
-            return new SubmitOrderResult(existing, Created: false);
+        var lines = request.LineItems.Select(input =>
+        {
+            var menu = menuById[input.MenuItemId];
+            var unitPrice = RoundMoney(menu.UnitPrice);
+            return new LineItem
+            {
+                Id = Guid.NewGuid(),
+                MenuItemId = menu.Id,
+                MenuCode = menu.Code,
+                Name = menu.Name,
+                Quantity = input.Quantity,
+                UnitPrice = unitPrice,
+                LineTotal = RoundMoney(input.Quantity * unitPrice)
+            };
+        }).ToList();
 
-        throw new DuplicateOrderException(existing.ExternalReference);
-    }
-
-    private static Order Build(CreateOrderRequest request, string reference, DateTimeOffset now)
-    {
-        var items = request.LineItems.Select(ToLineItem).ToList();
-        var subtotal = items.Sum(i => i.LineTotal);
+        var subtotal = lines.Sum(l => l.LineTotal);
 
         return new Order
         {
             Id = Guid.NewGuid(),
-            ExternalReference = reference,
-            Customer = new Customer
-            {
-                Id = Guid.NewGuid(),
-                Name = request.Customer!.Name.Trim(),
-                Email = request.Customer.Email.Trim()
-            },
-            LineItems = items,
-            Currency = request.Currency.Trim().ToUpperInvariant(),
+            OrderNumber = orderNumber,
+            ClientReference = string.IsNullOrWhiteSpace(request.ClientReference)
+                ? null
+                : request.ClientReference.Trim(),
+            LineItems = lines,
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim(),
             Subtotal = subtotal,
             Total = subtotal,
@@ -105,128 +169,42 @@ public sealed class OrderService
         };
     }
 
-    private static LineItem ToLineItem(LineItemInput input)
+    private static bool SameDetails(
+        Order existing,
+        CreateOrderRequest request,
+        IReadOnlyDictionary<Guid, MenuItem> menuById)
     {
-        var unitPrice = Money.Round(input.UnitPrice);
-        return new LineItem
-        {
-            Sku = input.Sku.Trim(),
-            Name = input.Name.Trim(),
-            Quantity = input.Quantity,
-            UnitPrice = unitPrice,
-            LineTotal = Money.Round(input.Quantity * unitPrice)
-        };
-    }
-
-    private static List<string> Validate(CreateOrderRequest request)
-    {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(request.ExternalReference))
-            errors.Add("External reference is required.");
-        else if (request.ExternalReference.Trim().Length > 80)
-            errors.Add("External reference is too long (80 characters max).");
-
-        if (request.Customer is null)
-        {
-            errors.Add("Customer is required.");
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(request.Customer.Name))
-                errors.Add("Customer name is required.");
-            else if (request.Customer.Name.Trim().Length > 120)
-                errors.Add("Customer name is too long.");
-
-            if (string.IsNullOrWhiteSpace(request.Customer.Email))
-                errors.Add("Customer email is required.");
-            else if (!MailAddress.TryCreate(request.Customer.Email.Trim(), out _))
-                errors.Add("Customer email doesn't look valid.");
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Currency) || !CurrencyCode.IsMatch(request.Currency.Trim()))
-            errors.Add("Currency must be a 3-letter code, e.g. USD.");
-
-        if (!string.IsNullOrWhiteSpace(request.Notes) && request.Notes.Trim().Length > 1000)
-            errors.Add("Notes are too long (1000 characters max).");
-
-        if (request.LineItems is null || request.LineItems.Count == 0)
-        {
-            errors.Add("At least one line item is required.");
-            return errors;
-        }
-
-        if (request.LineItems.Count > 50)
-            errors.Add("An order can have at most 50 line items.");
-
-        for (var i = 0; i < request.LineItems.Count; i++)
-        {
-            var line = request.LineItems[i];
-            var n = i + 1;
-
-            if (string.IsNullOrWhiteSpace(line.Sku))
-                errors.Add($"Line {n}: SKU is required.");
-            if (string.IsNullOrWhiteSpace(line.Name))
-                errors.Add($"Line {n}: name is required.");
-            if (line.Quantity < 1)
-                errors.Add($"Line {n}: quantity must be a positive whole number.");
-            if (line.UnitPrice < 0)
-                errors.Add($"Line {n}: unit price can't be negative.");
-        }
-
-        return errors;
-    }
-
-    private static bool SamePayload(Order existing, CreateOrderRequest request)
-    {
-        if (!string.Equals(existing.Currency, request.Currency.Trim(), StringComparison.OrdinalIgnoreCase))
-            return false;
-
         var existingNotes = existing.Notes ?? string.Empty;
         var incomingNotes = string.IsNullOrWhiteSpace(request.Notes) ? string.Empty : request.Notes.Trim();
         if (!string.Equals(existingNotes, incomingNotes, StringComparison.Ordinal))
-            return false;
-
-        if (!string.Equals(existing.Customer.Name, request.Customer!.Name.Trim(), StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (!string.Equals(existing.Customer.Email, request.Customer.Email.Trim(), StringComparison.OrdinalIgnoreCase))
             return false;
 
         if (existing.LineItems.Count != request.LineItems.Count)
             return false;
 
         var existingLines = existing.LineItems
-            .Select(l => (l.Sku, l.Name, l.Quantity, l.UnitPrice))
-            .OrderBy(l => l.Sku, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(l => (l.MenuItemId, l.Quantity, l.UnitPrice))
+            .OrderBy(l => l.MenuItemId)
             .ToList();
 
         var incomingLines = request.LineItems
-            .Select(l => (Sku: l.Sku.Trim(), Name: l.Name.Trim(), l.Quantity, UnitPrice: Money.Round(l.UnitPrice)))
-            .OrderBy(l => l.Sku, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(l => (MenuItemId: l.MenuItemId, l.Quantity, UnitPrice: RoundMoney(menuById[l.MenuItemId].UnitPrice)))
+            .OrderBy(l => l.MenuItemId)
             .ToList();
 
         for (var i = 0; i < existingLines.Count; i++)
         {
-            var a = existingLines[i];
-            var b = incomingLines[i];
-            if (!string.Equals(a.Sku, b.Sku, StringComparison.OrdinalIgnoreCase))
+            if (existingLines[i].MenuItemId != incomingLines[i].MenuItemId)
                 return false;
-            if (!string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase))
+            if (existingLines[i].Quantity != incomingLines[i].Quantity)
                 return false;
-            if (a.Quantity != b.Quantity)
-                return false;
-            if (a.UnitPrice != b.UnitPrice)
+            if (existingLines[i].UnitPrice != incomingLines[i].UnitPrice)
                 return false;
         }
 
         return true;
     }
-}
 
-internal static class Money
-{
-    public static decimal Round(decimal value) =>
+    private static decimal RoundMoney(decimal value) =>
         decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 }

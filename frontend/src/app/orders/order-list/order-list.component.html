@@ -1,9 +1,9 @@
 <div class="page-head">
-  <h1>Orders</h1>
-  <a routerLink="/orders/new" class="btn">New order</a>
+  <h1>Kitchen orders</h1>
+  <a routerLink="/orders/new" class="btn">New food order</a>
 </div>
 
-<p class="hint">Newest first. Repeat submits with the same client reference reuse the original order.</p>
+<p class="hint">Newest first. Track orders by order number. Leave client reference blank to place another order anytime.</p>
 
 <div class="toolbar">
   <label>
@@ -25,28 +25,25 @@
 @if (loading) {
   <p>Loading…</p>
 } @else if (visible.length === 0) {
-  <p class="empty">No orders{{ statusFilter ? ' with that status' : ' yet' }}.</p>
+  <p class="empty">No food orders{{ statusFilter ? ' with that status' : ' yet' }}.</p>
 } @else {
   <table>
     <thead>
       <tr>
+        <th>Order #</th>
         <th>Reference</th>
-        <th>Customer</th>
         <th>Status</th>
         <th>Total</th>
-        <th>Submitted</th>
+        <th>Placed</th>
       </tr>
     </thead>
     <tbody>
       @for (order of visible; track order.id) {
         <tr [routerLink]="['/orders', order.id]" class="row">
-          <td>{{ order.externalReference }}</td>
-          <td>
-            {{ order.customer.name }}
-            <div class="muted">{{ order.customer.email }}</div>
-          </td>
+          <td>{{ order.orderNumber }}</td>
+          <td>{{ order.clientReference || '—' }}</td>
           <td><span class="badge" [ngClass]="statusClass(order.status)">{{ order.status }}</span></td>
-          <td>{{ order.total | number:'1.2-2' }} {{ order.currency }}</td>
+          <td>{{ formatMoney(order.total) }}</td>
           <td>{{ order.createdAt | date:'yyyy-MM-dd HH:mm' }}</td>
         </tr>
       }

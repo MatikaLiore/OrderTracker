@@ -1,3 +1,3 @@
-# Frontend
+# Ndalama Kitchen (frontend)
 
-Angular 18 app for Order Tracker. Run instructions are in the repo root README.
+Angular 18 app for kitchen food orders. See the root [README](../README.md).

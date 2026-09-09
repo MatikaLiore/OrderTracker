@@ -1,7 +1,9 @@
-import { Component, inject } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { OrderApiService, readApiError } from './order-api.service';
+import { readApiError } from '../../shared/api-error';
+import { OrderApiService } from '../order-api.service';
+import { MenuItem, formatMoney } from '../order.model';
 
 @Component({
   selector: 'app-order-form',
@@ -10,25 +12,38 @@ import { OrderApiService, readApiError } from './order-api.service';
   templateUrl: './order-form.component.html',
   styleUrl: './order-form.component.css'
 })
-export class OrderFormComponent {
+export class OrderFormComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly api = inject(OrderApiService);
   private readonly router = inject(Router);
 
+  menu: MenuItem[] = [];
+  menuLoading = true;
   saving = false;
   error = '';
+  readonly formatMoney = formatMoney;
 
   readonly form = this.fb.nonNullable.group({
-    externalReference: ['', [Validators.required, Validators.maxLength(80)]],
-    customerName: ['', [Validators.required, Validators.maxLength(120)]],
-    customerEmail: ['', [Validators.required, Validators.email]],
-    currency: ['USD', Validators.required],
+    clientReference: ['', Validators.maxLength(80)],
     notes: ['', Validators.maxLength(1000)],
     lineItems: this.fb.array([this.lineGroup()])
   });
 
   get lines(): FormArray {
     return this.form.controls.lineItems;
+  }
+
+  ngOnInit(): void {
+    this.api.listMenu().subscribe({
+      next: (menu) => {
+        this.menu = menu;
+        this.menuLoading = false;
+      },
+      error: (err) => {
+        this.error = readApiError(err);
+        this.menuLoading = false;
+      }
+    });
   }
 
   addLine(): void {
@@ -42,26 +57,38 @@ export class OrderFormComponent {
     this.lines.removeAt(index);
   }
 
+  priceFor(menuItemId: string): number {
+    if (!menuItemId) {
+      return 0;
+    }
+    return this.menu.find((m) => m.id === menuItemId)?.unitPrice ?? 0;
+  }
+
+  dishLabel(item: MenuItem): string {
+    return `${item.name} (${formatMoney(item.unitPrice)})`;
+  }
+
   submit(): void {
     this.error = '';
     this.form.markAllAsTouched();
     if (this.form.invalid) {
-      this.error = 'Fill in the required fields before submitting.';
+      this.error = 'Choose at least one dish and fill in the required fields before submitting.';
       return;
     }
 
     const value = this.form.getRawValue();
+    if (value.lineItems.some((line) => !line.menuItemId)) {
+      this.error = 'Please select a dish for every line.';
+      return;
+    }
+
     this.saving = true;
     this.api.submit({
-      externalReference: value.externalReference,
-      customer: { name: value.customerName, email: value.customerEmail },
-      currency: value.currency,
+      clientReference: value.clientReference?.trim() ? value.clientReference.trim() : undefined,
       notes: value.notes?.trim() ? value.notes : undefined,
       lineItems: value.lineItems.map((line) => ({
-        sku: line.sku,
-        name: line.name,
-        quantity: Number(line.quantity),
-        unitPrice: Number(line.unitPrice)
+        menuItemId: line.menuItemId,
+        quantity: Number(line.quantity)
       }))
     }).subscribe({
       next: (result) => {
@@ -79,10 +106,8 @@ export class OrderFormComponent {
 
   private lineGroup() {
     return this.fb.nonNullable.group({
-      sku: ['', Validators.required],
-      name: ['', Validators.required],
-      quantity: [1, [Validators.required, Validators.min(1)]],
-      unitPrice: [0, [Validators.required, Validators.min(0)]]
+      menuItemId: ['', Validators.required],
+      quantity: [1, [Validators.required, Validators.min(1)]]
     });
   }
 }

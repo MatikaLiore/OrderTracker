@@ -99,7 +99,8 @@ th {
 
 .st-pending { background: #eceff3; color: #394150; }
 .st-confirmed { background: #dce8f8; color: #1f3a5f; }
-.st-fulfilled { background: #d9eedf; color: #215c34; }
+.st-ready { background: #e7f0d8; color: #3d5a1f; }
+.st-done { background: #d9eedf; color: #215c34; }
 .st-cancelled { background: #f7dede; color: #8a2b2b; }
 
 .muted {

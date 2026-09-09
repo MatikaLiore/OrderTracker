@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
-using OrderTracker.Api.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using OrderTracker.Api;
+using OrderTracker.Api.Data;
 using OrderTracker.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,8 +15,20 @@ builder.Services.AddControllers()
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-builder.Services.AddSingleton<IOrderStore, InMemoryOrderStore>();
-builder.Services.AddSingleton<OrderService>();
+var useInMemory = builder.Configuration.GetValue("Database:UseInMemory", false);
+var connectionString = builder.Configuration.GetConnectionString("KitchenDb")
+    ?? "Server=(localdb)\\mssqllocaldb;Database=NdalamaKitchen;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True";
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    if (useInMemory)
+        options.UseInMemoryDatabase("NdalamaKitchen");
+    else
+        options.UseSqlServer(connectionString);
+});
+
+builder.Services.AddScoped<OrderStore>();
+builder.Services.AddScoped<OrderService>();
 
 builder.Services.AddCors(options =>
 {
@@ -25,6 +39,14 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureDeleted();
+    db.Database.EnsureCreated();
+    MenuData.Seed(db);
+}
 
 app.UseExceptionHandler();
 app.UseCors();

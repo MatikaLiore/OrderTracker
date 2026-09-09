@@ -1,13 +1,14 @@
-import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
+import { DatePipe, NgClass } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { OrderApiService, readApiError } from './order-api.service';
-import { Order, OrderStatus, nextStatuses } from './order.model';
+import { readApiError } from '../../shared/api-error';
+import { OrderApiService } from '../order-api.service';
+import { Order, OrderStatus, formatMoney, nextStatuses, statusClass } from '../order.model';
 
 @Component({
   selector: 'app-order-detail',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, NgClass, RouterLink],
+  imports: [DatePipe, NgClass, RouterLink],
   templateUrl: './order-detail.component.html',
   styleUrl: './order-detail.component.css'
 })
@@ -20,15 +21,17 @@ export class OrderDetailComponent implements OnInit {
   error = '';
   notice = '';
   updating = false;
+  readonly statusClass = statusClass;
+  readonly formatMoney = formatMoney;
 
   ngOnInit(): void {
     if (history.state?.['replay']) {
-      this.notice = 'This client reference was already on file, so the original order is shown instead of creating a duplicate.';
+      this.notice = 'This client reference was already on file, so the original food order is shown instead of creating a duplicate.';
     }
 
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
-      this.error = 'Missing order id.';
+      this.error = 'Missing food order id.';
       this.loading = false;
       return;
     }
@@ -47,10 +50,6 @@ export class OrderDetailComponent implements OnInit {
 
   moves(): OrderStatus[] {
     return this.order ? nextStatuses(this.order.status) : [];
-  }
-
-  statusClass(status: OrderStatus): string {
-    return 'st-' + status.toLowerCase();
   }
 
   setStatus(status: OrderStatus): void {

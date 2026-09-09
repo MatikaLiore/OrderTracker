@@ -17,12 +17,6 @@ legend {
   font-weight: 600;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 label {
   display: flex;
   flex-direction: column;
@@ -35,17 +29,17 @@ label {
   margin-bottom: 10px;
 }
 
-.lines input {
+.lines input,
+.lines select {
   width: 100%;
+}
+
+.price {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
-}
-
-@media (max-width: 720px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
 }

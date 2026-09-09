@@ -1,14 +1,15 @@
-import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
+import { DatePipe, NgClass } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { OrderApiService, readApiError } from './order-api.service';
-import { Order, OrderStatus, STATUS_OPTIONS } from './order.model';
+import { readApiError } from '../../shared/api-error';
+import { OrderApiService } from '../order-api.service';
+import { Order, STATUS_OPTIONS, formatMoney, statusClass } from '../order.model';
 
 @Component({
   selector: 'app-order-list',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, NgClass, RouterLink, FormsModule],
+  imports: [DatePipe, NgClass, RouterLink, FormsModule],
   templateUrl: './order-list.component.html',
   styleUrl: './order-list.component.css'
 })
@@ -20,6 +21,8 @@ export class OrderListComponent implements OnInit {
   loading = true;
   error = '';
   readonly statuses = STATUS_OPTIONS;
+  readonly statusClass = statusClass;
+  readonly formatMoney = formatMoney;
 
   ngOnInit(): void {
     this.reload();
@@ -45,9 +48,5 @@ export class OrderListComponent implements OnInit {
         this.loading = false;
       }
     });
-  }
-
-  statusClass(status: OrderStatus): string {
-    return 'st-' + status.toLowerCase();
   }
 }

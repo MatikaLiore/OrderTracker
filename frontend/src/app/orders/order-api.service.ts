@@ -1,7 +1,7 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
-import { CreateOrderPayload, Order, OrderStatus } from './order.model';
+import { CreateOrderPayload, MenuItem, Order, OrderStatus } from './order.model';
 
 export interface SubmitResult {
   order: Order;
@@ -11,18 +11,21 @@ export interface SubmitResult {
 @Injectable({ providedIn: 'root' })
 export class OrderApiService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = '/api/orders';
+
+  listMenu(): Observable<MenuItem[]> {
+    return this.http.get<MenuItem[]>('/api/menu');
+  }
 
   list(): Observable<Order[]> {
-    return this.http.get<Order[]>(this.baseUrl);
+    return this.http.get<Order[]>('/api/orders');
   }
 
   get(id: string): Observable<Order> {
-    return this.http.get<Order>(`${this.baseUrl}/${id}`);
+    return this.http.get<Order>(`/api/orders/${id}`);
   }
 
   submit(payload: CreateOrderPayload): Observable<SubmitResult> {
-    return this.http.post<Order>(this.baseUrl, payload, { observe: 'response' }).pipe(
+    return this.http.post<Order>('/api/orders', payload, { observe: 'response' }).pipe(
       map((res) => ({
         order: res.body as Order,
         created: res.status === 201
@@ -31,24 +34,6 @@ export class OrderApiService {
   }
 
   changeStatus(id: string, status: OrderStatus): Observable<Order> {
-    return this.http.post<Order>(`${this.baseUrl}/${id}/status`, { status });
+    return this.http.post<Order>(`/api/orders/${id}/status`, { status });
   }
-}
-
-export function readApiError(err: unknown): string {
-  if (!(err instanceof HttpErrorResponse)) {
-    return 'Something went wrong.';
-  }
-
-  const body = err.error;
-  if (body?.errors?.length) {
-    return body.errors.join(' ');
-  }
-  if (typeof body?.detail === 'string' && body.detail) {
-    return body.detail;
-  }
-  if (err.status === 0) {
-    return 'Cannot reach the API. Is the backend running on port 5080?';
-  }
-  return err.message || 'Request failed.';
 }

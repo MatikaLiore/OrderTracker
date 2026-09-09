@@ -1,12 +1,13 @@
 using System.Text.Json.Serialization;
 
-namespace OrderTracker.Api.Domain;
+namespace OrderTracker.Api.Models;
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OrderStatus
 {
     Pending,
     Confirmed,
-    Fulfilled,
+    Ready,
+    Done,
     Cancelled
 }
